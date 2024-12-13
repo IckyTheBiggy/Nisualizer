@@ -6,9 +6,9 @@ using UnityEngine.Rendering.Universal;
 namespace InteractiveComponents
 {
     [RequireComponent(typeof(Volume))]
-    public class InteractiveVolume : MonoBehaviour
+    public class InteractiveVolumeScript : MonoBehaviour
     {
-        private static MicrophoneDataScript MicrophoneData => GameManager.MicrophoneData;
+        private static MicrophoneDataScript MicrophoneData => GameManagerScript.MicrophoneData;
         
         [SerializeField] private Volume _volume;
     

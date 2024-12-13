@@ -5,9 +5,9 @@ using UnityEngine.Video;
 namespace InteractiveComponents
 {
     [RequireComponent(typeof(VideoPlayer))]
-    public class InteractiveVideoPlayer : MonoBehaviour
+    public class InteractiveVideoPlayerScript : MonoBehaviour
     {
-        private static MicrophoneDataScript MicrophoneData => GameManager.MicrophoneData;
+        private static MicrophoneDataScript MicrophoneData => GameManagerScript.MicrophoneData;
 
         [SerializeField] private VideoPlayer _videoPlayer;
         

@@ -1,16 +1,17 @@
 using Config;
+using NnUtils.Scripts;
 using UnityEngine;
 
 namespace Core
 {
     [RequireComponent(typeof(ConfigScript))]
     [RequireComponent(typeof(MicrophoneDataScript))]
-    [RequireComponent(typeof(SceneManager))]
-    public class GameManager : MonoBehaviour
+    [RequireComponent(typeof(NisualizerSceneManagerScript))]
+    public class GameManagerScript : MonoBehaviour
     {
         //Simple singleton implementation
-        private static GameManager _instance;
-        public static GameManager Instance
+        private static GameManagerScript _instance;
+        public static GameManagerScript Instance
         {
             get => _instance;
             private set
@@ -28,21 +29,21 @@ namespace Core
         }
 
         /// Contains all the Config data and logic
-        [SerializeField] private ConfigScript _config;
+        [ReadOnly] [SerializeField] private ConfigScript _config;
         public static ConfigScript ConfigScript => Instance._config;
         private static GeneralConfigData ConfigData => (GeneralConfigData)Instance._config.Data;
         
-        [SerializeField] private MicrophoneDataScript _microphoneData;
+        [ReadOnly] [SerializeField] private MicrophoneDataScript _microphoneData;
         public static MicrophoneDataScript MicrophoneData => Instance._microphoneData;
         
-        [SerializeField] private SceneManager _sceneManager;
-        public static SceneManager SceneManager => Instance._sceneManager;
+        [ReadOnly] [SerializeField] private NisualizerSceneManagerScript _nisualizerSceneManager;
+        public static NisualizerSceneManagerScript NisualizerSceneManager => Instance._nisualizerSceneManager;
         
         private void Reset()
         {
             _config = GetComponent<ConfigScript>();
             _microphoneData = FindFirstObjectByType<MicrophoneDataScript>();
-            _sceneManager = GetComponent<SceneManager>();
+            _nisualizerSceneManager = GetComponent<NisualizerSceneManagerScript>();
         }
 
 

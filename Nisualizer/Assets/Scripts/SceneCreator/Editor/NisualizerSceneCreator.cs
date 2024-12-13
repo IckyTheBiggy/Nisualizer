@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Config;
+using Core;
 using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEditor.SceneManagement;
@@ -17,7 +19,7 @@ namespace SceneCreator.Editor
         private static int _stage;
         
         // Scene data
-        private static string _sceneName, _sceneDir, _scenePath;
+        private static string _sceneName, _sceneDir, _scenePath, _sceneScriptsDir, _sceneConfigDir;
         
         // Storing the path instead of a direct reference to simplify the usage, especially in static functions
         private const string GameManagerPath = "Assets/Prefabs/GameManager.prefab";
@@ -36,6 +38,8 @@ namespace SceneCreator.Editor
             EditorPrefs.SetString("SceneName", _sceneName);
             EditorPrefs.SetString("SceneDir", _sceneDir);
             EditorPrefs.SetString("ScenePath", _scenePath);
+            EditorPrefs.SetString("SceneScriptsDir", _sceneScriptsDir);
+            EditorPrefs.SetString("SceneConfigDir", _sceneConfigDir);
             EditorPrefs.SetInt("Stage", _stage);
         }
 
@@ -45,6 +49,8 @@ namespace SceneCreator.Editor
             _sceneName = EditorPrefs.GetString("SceneName", _sceneName);
             _sceneDir = EditorPrefs.GetString("SceneDir", _sceneDir);
             _scenePath = EditorPrefs.GetString("ScenePath", _scenePath);
+            _sceneScriptsDir = EditorPrefs.GetString("SceneScriptsDir", _sceneScriptsDir);
+            _sceneConfigDir = EditorPrefs.GetString("SceneConfigDir", _sceneConfigDir);
             _stage = EditorPrefs.GetInt("Stage", _stage);
         }
 
@@ -54,6 +60,8 @@ namespace SceneCreator.Editor
             EditorPrefs.SetString("SceneName", "");
             EditorPrefs.SetString("SceneDir", "");
             EditorPrefs.SetString("ScenePath", "");
+            EditorPrefs.SetString("SceneScriptsDir", "");
+            EditorPrefs.SetString("SceneConfigDir", "");
             EditorPrefs.SetInt("Stage", 0);
         }
         
@@ -97,33 +105,65 @@ namespace SceneCreator.Editor
         #endregion
         
         #region SceneCreation
-        
-        /// Starts the scene creation if it's not already happening
+
+        /// Starts the scene creation process if it's not already happening
         private static void CreateNisualizerScene()
         {
-            if (_stage == 0) Stage0();
+            // Load the editor data to get the current stage
+            LoadEditorData();
+            
+            // Start the scene creation if it's not already happening
+            if (_stage == 0) ExecuteCurrentStage();
+        }
+
+        /// Takes care of resuming the execution after reload
+        [UnityEditor.Callbacks.DidReloadScripts]
+        private static void HandleReload()
+        {
+            // Load the editor data to get the current stage
+            LoadEditorData();
+            
+            // Continue execution if it was stopped
+            if (_stage != 0) ExecuteCurrentStage();
+        }
+        
+        /// Executes current stage and handles data reloading and saving
+        private static void ExecuteCurrentStage()
+        {
+            // Execute current stage
+            Stages[_stage]?.Invoke();
+            
+            // Check if this is the last stage
+            if (_stage == Stages.Count - 1)
+            {
+                // Set stage back to 0
+                _stage = 0;
+                
+                // Save the scene
+                EditorSceneManager.SaveOpenScenes();
+                
+                // Reload and save data
+                Reload();
+                
+                // Reset editor data
+                ResetEditorData();
+
+                return;
+            }
+
+            // Increment stage
+            _stage++;
+            
+            // Save editor data
+            SaveEditorData();
+            
+            // Reload and compile
+            EditorApplication.delayCall += ReloadAndCompile;
         }
 
         /// Gets called after each editor reload and handles all that later stages <br/>
         /// This is needed because some parts of the creation require newly created scripts to be compiled
-        [UnityEditor.Callbacks.DidReloadScripts]
-        private static void PostCreation()
-        {
-            // Load the data saved before the editor reload
-            LoadEditorData();
-            
-            // Return if not working
-            if (_stage == 0) return;
-            
-            // Call the appropriate stage
-            switch (_stage)
-            {
-                case 1: Stage1(); break;
-                case 2: Stage2(); break;
-                case 3: Stage3(); break;
-            }
-        }
-
+        
         /// Saves and reloads assets
         private static void Reload()
         {
@@ -144,10 +184,19 @@ namespace SceneCreator.Editor
             // Compile
             CompilationPipeline.RequestScriptCompilation();
         }
-        
+
         #endregion
         
         #region Stages
+
+        /// Holds all the stages to be executed by the <see cref="ExecuteCurrentStage"/> method
+        private static readonly List<Action> Stages = new()
+        {
+            Stage0,
+            Stage1,
+            Stage2,
+            Stage3
+        };
         
         /// Takes care of: <br/>
         /// Getting the scene data <br/>
@@ -158,24 +207,19 @@ namespace SceneCreator.Editor
         {
             // Get new scene data
             if (!GetSceneData()) return;
-            
-            // Save data to editor prefs
-            SaveEditorData();
 
             // Create scene directory and asset
             if (!CreateSceneDirectory()) return;
             CreateSceneAsset();
             
-            // Create the scene manager
+            // Create the Scripts dir and Scene Manager
+            CreateScriptsDirectory();
             CreateSceneManagerScript();
             
-            // Create config
+            // Create config dir and data
+            CreateConfigDirectory();
             CreateDefaultConfig();
             CreateConfigDataScript();
-            
-            // Update stage and reload assets so that assets are available for the next stage
-            _stage = 1;
-            EditorApplication.delayCall += ReloadAndCompile;
         }
 
         /// Creates an instance of a config data scriptable object
@@ -183,15 +227,11 @@ namespace SceneCreator.Editor
         {
             // Create an instance of the config SO
             CreateConfigDataSO();
-            
-            // Update stage and reload assets so that assets are available for the next stage
-            _stage = 2;
-            EditorApplication.delayCall += ReloadAndCompile;
         }
 
         /// Takes care of: <br/>
-        /// Adding a <see cref="Core.GameManager"/> instance to the scene <br/>
-        /// Adding a <see cref="Core.SceneScript"/> instance to the scene <br/>
+        /// Adding a <see cref="GameManagerScript"/> instance to the scene <br/>
+        /// Adding a <see cref="SceneManagerScript"/> instance to the scene <br/>
         /// Creating a <see cref="VolumeProfile"/> for the scene
         private static void Stage2()
         {
@@ -203,10 +243,6 @@ namespace SceneCreator.Editor
             
             // Create the volume profile for the scene
             CreateVolumeProfile();
-            
-            // Update stage and reload assets so that assets are available for the next stage
-            _stage = 3;
-            EditorApplication.delayCall += ReloadAndCompile;
         }
 
         /// Takes care of: <br/>
@@ -219,10 +255,6 @@ namespace SceneCreator.Editor
             
             // Add the camera
             AddCamera();
-            
-            // Update stage and reset editor data
-            _stage = 0;
-            ResetEditorData();
         }
         
         #endregion
@@ -239,6 +271,8 @@ namespace SceneCreator.Editor
             _sceneName = _sceneNameField.text;
             _sceneDir = Path.Combine("Assets/Scenes", _sceneName);
             _scenePath = Path.Combine(_sceneDir, _sceneName) + ".unity";
+            _sceneScriptsDir = Path.Combine(_sceneDir, "Scripts");
+            _sceneConfigDir = Path.Combine(_sceneDir, "Config");
 
             if (string.IsNullOrEmpty(_sceneName))
             {
@@ -250,7 +284,7 @@ namespace SceneCreator.Editor
         }
         
         /// <summary>
-        /// Creates the scene directory in Assets/Scenes
+        /// Creates the scene directory in Assets/Scenes/
         /// </summary>
         /// <returns>Whether the scene directory was successfully created</returns>
         private static bool CreateSceneDirectory()
@@ -274,28 +308,35 @@ namespace SceneCreator.Editor
             EditorSceneManager.SaveScene(newScene, _scenePath);
         }
 
-        /// Creates a new scene manager inheriting from the <see cref="Core.SceneScript"/>
+        /// Creates the Config directory in Assets/Scenes/SceneName/
+        private static void CreateScriptsDirectory() => AssetDatabase.CreateFolder(_sceneDir, "Scripts");
+        
+        /// Creates a new scene manager inheriting from the <see cref="SceneManagerScript"/>
         private static void CreateSceneManagerScript()
         {
             var scriptContent = $@"using Core;
+using Scenes.{_sceneName}.Config;
 
-namespace Scenes.{_sceneName}
+namespace Scenes.{_sceneName}.Scripts
 {{
-    public class {_sceneName}Manager : SceneScript
+    public class {_sceneName}Manager : SceneManagerScript
     {{
         public static {_sceneName}ConfigData ConfigData => ({_sceneName}ConfigData)Config.Data;
     }}
 }}
 ";
             
-            var scriptPath = Path.Combine(_sceneDir, $"{_sceneName}Manager.cs");
+            var scriptPath = Path.Combine(_sceneScriptsDir, $"{_sceneName}Manager.cs");
             File.WriteAllText(scriptPath, scriptContent);
         }
+        
+        /// Creates the Config directory in Assets/Scenes/SceneName/
+        private static void CreateConfigDirectory() => AssetDatabase.CreateFolder(_sceneDir, "Config");
         
         /// Creates default config for the newly created scene
         private static void CreateDefaultConfig()
         {
-            var configPath = Path.Combine(_sceneDir, $"{_sceneName}Config.json");
+            var configPath = Path.Combine(_sceneConfigDir, $"{_sceneName}Config.json");
             File.WriteAllText(configPath, "{\n\n}");
         }
         
@@ -305,7 +346,7 @@ namespace Scenes.{_sceneName}
             var scriptContent = $@"using Config;
 using UnityEngine;
 
-namespace Scenes.{_sceneName}
+namespace Scenes.{_sceneName}.Config
 {{
     // This class should be a perfect match of your JSON config
     [CreateAssetMenu(fileName = ""{_sceneName}ConfigData"", menuName = ""Config/{_sceneName}ConfigData"")]
@@ -330,7 +371,7 @@ namespace Scenes.{_sceneName}
 }}
 ";
             
-            var scriptPath = Path.Combine(_sceneDir, $"{_sceneName}ConfigData.cs");
+            var scriptPath = Path.Combine(_sceneConfigDir, $"{_sceneName}ConfigData.cs");
             File.WriteAllText(scriptPath, scriptContent);
         }
         
@@ -343,7 +384,7 @@ namespace Scenes.{_sceneName}
         private static void CreateConfigDataSO()
         {
             var so = CreateInstance($"{_sceneName}ConfigData");
-            var soPath = Path.Combine(_sceneDir, $"{_sceneName}ConfigData.asset");
+            var soPath = Path.Combine(_sceneConfigDir, $"{_sceneName}ConfigData.asset");
             AssetDatabase.CreateAsset(so, soPath);
         }
 
@@ -351,8 +392,15 @@ namespace Scenes.{_sceneName}
         
         #region Stage2
         
-        /// Adds <see cref="Core.GameManager"/> to the newly created scene
-        private static void AddGameManager() => PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(GameManagerPath));
+        /// Adds <see cref="GameManagerScript"/> to the newly created scene
+        private static void AddGameManager()
+        {
+            // Instantiate GameManager prefab
+            var go = PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(GameManagerPath));
+            
+            // Mark the object as dirty so it doesn't get deleted on scene reload
+            EditorUtility.SetDirty(go);
+        }
 
         /// Adds a newly created scene manager to the scene <br/>
         /// Requires created scripts to be compiled, call <see cref="ReloadAndCompile"/> before this function
@@ -362,14 +410,19 @@ namespace Scenes.{_sceneName}
             GameObject go = new($"{_sceneName}Manager");
             
             // Add the Scene Script to it
-            go.AddComponent(Type.GetType($"Scenes.{_sceneName}.{_sceneName}Manager, Assembly-CSharp"));
+            go.AddComponent(Type.GetType($"Scenes.{_sceneName}.Scripts.{_sceneName}Manager, Assembly-CSharp"));
             
             // Change Config Script values
             var conf = go.GetComponent<ConfigScript>();
             conf.ConfigName = _sceneName;
-            conf.DefaultConfig = AssetDatabase.LoadAssetAtPath<TextAsset>(Path.Combine(_sceneDir, $"{_sceneName}Config.json"));
-            var sm = AssetDatabase.LoadAssetAtPath<ConfigData>(Path.Combine(_sceneDir, $"{_sceneName}ConfigData.asset"));
+            conf.DefaultConfig = AssetDatabase.LoadAssetAtPath<TextAsset>(Path.Combine(_sceneConfigDir, $"{_sceneName}Config.json"));
+            
+            // Change Scene Manager values
+            var sm = AssetDatabase.LoadAssetAtPath<ConfigData>(Path.Combine(_sceneConfigDir, $"{_sceneName}ConfigData.asset"));
             conf.Data = sm;
+            
+            // Mark the object as dirty so it doesn't get deleted on scene reload
+            EditorUtility.SetDirty(go);
         }
         
         /// Creates a new <see cref="UnityEngine.Rendering.VolumeProfile"/> in the scene dir
@@ -392,6 +445,9 @@ namespace Scenes.{_sceneName}
             // Assign the newly created profile to it
             var ass = AssetDatabase.LoadAssetAtPath<VolumeProfile>(Path.Combine(_sceneDir, $"{_sceneName}VolumeProfile.asset"));
             vol.sharedProfile = ass;
+            
+            // Mark the object as dirty so it doesn't get deleted on scene reload
+            EditorUtility.SetDirty(go);
         }
 
         /// Creates a new camera
@@ -413,6 +469,9 @@ namespace Scenes.{_sceneName}
             // Enable post-processing
             var uacd = go.AddComponent<UniversalAdditionalCameraData>();
             uacd.renderPostProcessing = true;
+            
+            // Mark the object as dirty so it doesn't get deleted on scene reload
+            EditorUtility.SetDirty(go);
         }
         
         #endregion

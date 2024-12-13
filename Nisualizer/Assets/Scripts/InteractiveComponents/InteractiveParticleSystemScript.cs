@@ -6,7 +6,7 @@ namespace InteractiveComponents
     [RequireComponent(typeof(ParticleSystem))]
     public class InteractiveParticleSystemScript : MonoBehaviour
     {
-        private static MicrophoneDataScript MicrophoneData => GameManager.MicrophoneData;
+        private static MicrophoneDataScript MicrophoneData => GameManagerScript.MicrophoneData;
         
         [SerializeField] private ParticleSystem _particleSystem;
         [SerializeField] private Vector2 _simSpeedRange = new(0.1f, 1);

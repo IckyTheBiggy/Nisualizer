@@ -2,9 +2,9 @@ using Core;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace Scenes.Snowstorm
+namespace Scenes.Snowstorm.Scripts
 {
-    public class SnowstormManager : SceneScript
+    public class SnowstormManager : SceneManagerScript
     {
         public static SnowstormConfigData ConfigData => (SnowstormConfigData)Config.Data;
 
